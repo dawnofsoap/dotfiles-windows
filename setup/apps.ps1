@@ -9,18 +9,22 @@
     Include development tools (Docker, Python, WSL, etc.)
 
 .PARAMETER IT
-    Include IT/Infrastructure tools (RSAT, RustDesk, etc.)
+    Include IT/Infrastructure tools (RustDesk, AzCopy, etc.)
 
 .PARAMETER All
-    Install everything
+    Install everything (excluding RSAT unless -IncludeRSAT specified)
+
+.PARAMETER IncludeRSAT
+    Include RSAT tools (slow - downloads from Windows Update)
 
 .PARAMETER Parallel
     Install apps in parallel (faster)
 
 .EXAMPLE
-    .\apps.ps1 -Core -IT    # Core + IT tools
-    .\apps.ps1 -All         # Everything
-    .\apps.ps1              # Interactive selection
+    .\apps.ps1 -Core -IT           # Core + IT tools (no RSAT)
+    .\apps.ps1 -IT -IncludeRSAT    # IT tools with RSAT
+    .\apps.ps1 -All                # Everything except RSAT
+    .\apps.ps1                     # Interactive selection
 #>
 
 #Requires -Version 5.1
@@ -31,6 +35,7 @@ param(
     [switch]$Dev,
     [switch]$IT,
     [switch]$All,
+    [switch]$IncludeRSAT,
     [switch]$Parallel,
     [switch]$Force
 )
@@ -254,8 +259,8 @@ function Install-RSAT {
     param([ref]$Stats)
     
     Write-Host ""
-    Write-Host "  RSAT Tools" -ForegroundColor Yellow
-    Write-Host "  ----------" -ForegroundColor Yellow
+    Write-Host "  RSAT Tools (this may take a while)" -ForegroundColor Yellow
+    Write-Host "  -----------------------------------" -ForegroundColor Yellow
     
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     
@@ -322,26 +327,31 @@ function Install-WSL {
 
 function Show-InteractiveMenu {
     Write-Host ""
-    Write-Host ('=' * 50) -ForegroundColor Cyan
+    Write-Host ('=' * 55) -ForegroundColor Cyan
     Write-Host "  Application Installation" -ForegroundColor Cyan
-    Write-Host ('=' * 50) -ForegroundColor Cyan
+    Write-Host ('=' * 55) -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  [1] Core Only        - Git, PS7, VS Code, NanaZip, Bitwarden"
     Write-Host "  [2] Core + Dev       - Add Docker, Python, WSL, .NET, JDK"
-    Write-Host "  [3] Core + IT        - Add RSAT, RustDesk, AzCopy, WinSCP, etc."
+    Write-Host "  [3] Core + IT        - Add RustDesk, AzCopy, WinSCP, etc."
     Write-Host "  [4] Core + Dev + IT  - Development + Infrastructure"
     Write-Host "  [5] Everything       - All of the above + utilities"
+    Write-Host ""
+    Write-Host "  [R] Include RSAT     - Add AD, DNS, DHCP, GP tools (slow)" -ForegroundColor DarkGray
     Write-Host "  [Q] Quit"
     Write-Host ""
     
-    $selection = Read-Host "Select option"
+    $selection = Read-Host "Select option (add R for RSAT, e.g. '3R' or '4R')"
     
-    switch ($selection.ToUpper()) {
-        '1' { return @{ Core = $true } }
-        '2' { return @{ Core = $true; Dev = $true } }
-        '3' { return @{ Core = $true; IT = $true } }
-        '4' { return @{ Core = $true; Dev = $true; IT = $true } }
-        '5' { return @{ Core = $true; Dev = $true; IT = $true; Utility = $true } }
+    $includeRsat = $selection -match 'R'
+    $selection = $selection -replace 'R', ''
+    
+    switch ($selection.ToUpper().Trim()) {
+        '1' { return @{ Core = $true; RSAT = $includeRsat } }
+        '2' { return @{ Core = $true; Dev = $true; RSAT = $includeRsat } }
+        '3' { return @{ Core = $true; IT = $true; RSAT = $includeRsat } }
+        '4' { return @{ Core = $true; Dev = $true; IT = $true; RSAT = $includeRsat } }
+        '5' { return @{ Core = $true; Dev = $true; IT = $true; Utility = $true; RSAT = $includeRsat } }
         'Q' { exit 0 }
         default { 
             Write-Host "Invalid selection" -ForegroundColor Red
@@ -388,7 +398,11 @@ if ($All) {
 }
 elseif (-not ($Core -or $Dev -or $IT)) {
     $selections = Show-InteractiveMenu
-    $Core = $selections.Core; $Dev = $selections.Dev; $IT = $selections.IT; $Utility = $selections.Utility
+    $Core = $selections.Core
+    $Dev = $selections.Dev
+    $IT = $selections.IT
+    $Utility = $selections.Utility
+    $IncludeRSAT = $selections.RSAT
 }
 
 # Calculate totals
@@ -400,12 +414,15 @@ if ($Utility) { $allApps += $UtilityApps }
 
 $totalCount = $allApps.Count
 if ($Dev) { $totalCount++ }  # WSL
-if ($IT) { $totalCount += 4 }  # RSAT features
+if ($IncludeRSAT) { $totalCount += 4 }  # RSAT features
 
 Write-Host ""
 Write-Host "Total items to process: $totalCount" -ForegroundColor Gray
 if ($Parallel) {
     Write-Host "Mode: Parallel installation" -ForegroundColor Gray
+}
+if (-not $IncludeRSAT -and $IT) {
+    Write-Host "RSAT: Skipped (use -IncludeRSAT to install)" -ForegroundColor DarkGray
 }
 
 $stats = [ref]@{ Installed = 0; Skipped = 0; Failed = 0 }
@@ -416,28 +433,30 @@ $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 if ($Parallel) {
     if ($Core) { Install-AppsParallel -Apps $CoreApps -Category "Core Applications" -Stats $stats }
     if ($Dev) { Install-AppsParallel -Apps $DevApps -Category "Development Tools" -Stats $stats; Install-WSL -Stats $stats }
-    if ($IT) { Install-AppsParallel -Apps $ITApps -Category "IT/Infrastructure Tools" -Stats $stats; Install-RSAT -Stats $stats }
+    if ($IT) { Install-AppsParallel -Apps $ITApps -Category "IT/Infrastructure Tools" -Stats $stats }
     if ($Utility) { Install-AppsParallel -Apps $UtilityApps -Category "Utilities" -Stats $stats }
+    if ($IncludeRSAT) { Install-RSAT -Stats $stats }
 }
 else {
     if ($Core) { Install-AppsSequential -Apps $CoreApps -Category "Core Applications" -CurrentCount $currentCount -TotalCount $totalCount -Stats $stats }
     if ($Dev) { Install-AppsSequential -Apps $DevApps -Category "Development Tools" -CurrentCount $currentCount -TotalCount $totalCount -Stats $stats; Install-WSL -Stats $stats }
-    if ($IT) { Install-AppsSequential -Apps $ITApps -Category "IT/Infrastructure Tools" -CurrentCount $currentCount -TotalCount $totalCount -Stats $stats; Install-RSAT -Stats $stats }
+    if ($IT) { Install-AppsSequential -Apps $ITApps -Category "IT/Infrastructure Tools" -CurrentCount $currentCount -TotalCount $totalCount -Stats $stats }
     if ($Utility) { Install-AppsSequential -Apps $UtilityApps -Category "Utilities" -CurrentCount $currentCount -TotalCount $totalCount -Stats $stats }
+    if ($IncludeRSAT) { Install-RSAT -Stats $stats }
 }
 
 $stopwatch.Stop()
 Show-Summary -Stats $stats.Value -Stopwatch $stopwatch
 
 # Post-install notes
-if ($Dev -or $IT) {
+if ($Dev -or $IT -or $IncludeRSAT) {
     Write-Host "Notes:" -ForegroundColor Yellow
     if ($Dev) {
         Write-Host "  • Claude Code: npm install -g @anthropic-ai/claude-code"
         Write-Host "  • WSL: Reboot, then 'wsl --install Ubuntu'"
         Write-Host "  • Docker: May need Hyper-V/WSL2 backend enabled"
     }
-    if ($IT) {
+    if ($IncludeRSAT) {
         Write-Host "  • RSAT: Reboot may be needed for all tools"
     }
     Write-Host ""
