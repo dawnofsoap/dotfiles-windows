@@ -302,12 +302,32 @@ if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
     if (Test-Path $profilePath) {
         $profileContent = Get-Content $profilePath -Raw
         
-        if ($profileContent -match 'oh-my-posh init') {
+        if ($profileContent -match 'oh-my-posh') {
             # Always update to new theme when user selects one
             Write-Status "Updating OhMyPosh theme to: $ThemeName..."
+            # Remove all variations of OhMyPosh config
             $profileContent = $profileContent -replace '(?ms)# OhMyPosh Configuration.*?Invoke-Expression\s*\}', ''
-            $profileContent = $profileContent -replace "oh-my-posh init pwsh.*Invoke-Expression", ''
+            $profileContent = $profileContent -replace 'oh-my-posh init pwsh.*Invoke-Expression', ''
+            $profileContent = $profileContent -replace 'oh-my-posh --init --shell pwsh.*Invoke-Expression', ''
             Set-Content -Path $profilePath -Value $profileContent.Trim()
+        }
+    }
+    
+    # Also clean up CurrentUserAllHosts if it has OhMyPosh config
+    $allHostsProfile = $PROFILE.CurrentUserAllHosts
+    if ((Test-Path $allHostsProfile) -and $allHostsProfile -ne $profilePath) {
+        $allHostsContent = Get-Content $allHostsProfile -Raw -ErrorAction SilentlyContinue
+        if ($allHostsContent -match 'oh-my-posh') {
+            Write-Status "Cleaning up duplicate config in AllHosts profile..."
+            $allHostsContent = $allHostsContent -replace '(?ms)# OhMyPosh Configuration.*?Invoke-Expression\s*\}', ''
+            $allHostsContent = $allHostsContent -replace 'oh-my-posh init pwsh.*Invoke-Expression', ''
+            $allHostsContent = $allHostsContent -replace 'oh-my-posh --init --shell pwsh.*Invoke-Expression', ''
+            $cleanContent = $allHostsContent.Trim()
+            if ($cleanContent) {
+                Set-Content -Path $allHostsProfile -Value $cleanContent
+            } else {
+                Remove-Item $allHostsProfile -Force
+            }
         }
     }
     
