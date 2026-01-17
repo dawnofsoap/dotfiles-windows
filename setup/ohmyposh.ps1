@@ -302,16 +302,11 @@ if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
         $profileContent = Get-Content $profilePath -Raw
         
         if ($profileContent -match 'oh-my-posh init') {
-            if ($Force) {
-                Write-Status "Removing existing OhMyPosh configuration..." -Type Warning
-                $profileContent = $profileContent -replace '(?ms)# OhMyPosh Configuration.*?Invoke-Expression\s*\}', ''
-                $profileContent = $profileContent -replace "oh-my-posh init pwsh.*Invoke-Expression", ''
-                Set-Content -Path $profilePath -Value $profileContent.Trim()
-            }
-            else {
-                Write-Status "OhMyPosh already configured in profile. Use -Force to overwrite." -Type Warning
-                return
-            }
+            # Always update to new theme when user selects one
+            Write-Status "Updating OhMyPosh theme to: $ThemeName..."
+            $profileContent = $profileContent -replace '(?ms)# OhMyPosh Configuration.*?Invoke-Expression\s*\}', ''
+            $profileContent = $profileContent -replace "oh-my-posh init pwsh.*Invoke-Expression", ''
+            Set-Content -Path $profilePath -Value $profileContent.Trim()
         }
     }
     
