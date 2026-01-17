@@ -198,17 +198,11 @@ function Install-OhMyPosh {
         Write-Status "OhMyPosh installed but theme '$ThemeName' not found. Reinstalling..." -Type Warning
     }
     
-    Write-Status "Installing OhMyPosh via winget..."
+    Write-Status "Installing OhMyPosh via official installer (includes themes)..."
     
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Write-Status "winget not found. Attempting alternative installation..." -Type Warning
-        Set-ExecutionPolicy Bypass -Scope Process -Force
-        Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://ohmyposh.dev/install.ps1'))
-    }
-    else {
-        # Use --force to ensure themes are installed
-        winget install JanDeDobbeleer.OhMyPosh -s winget --accept-package-agreements --accept-source-agreements --force
-    }
+    # Use official installer instead of winget - winget version often missing themes
+    Set-ExecutionPolicy Bypass -Scope Process -Force
+    Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://ohmyposh.dev/install.ps1'))
     
     # Refresh environment variables
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + 
