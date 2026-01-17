@@ -280,7 +280,8 @@ function Update-PowerShellProfile {
     
     Write-Status "Configuring PowerShell profile with theme: $ThemeName..."
     
-    $profilePath = $PROFILE.CurrentUserAllHosts
+    # Use CurrentUserCurrentHost profile - this is what PowerShell loads by default
+    $profilePath = $PROFILE
     $profileDir = Split-Path $profilePath -Parent
     
     if (-not (Test-Path $profileDir)) {
@@ -429,9 +430,8 @@ function Show-PostInstallInstructions {
     # Auto-reload profile
     Write-Status "Reloading PowerShell profile..."
     try {
-        $profilePath = $PROFILE.CurrentUserAllHosts
-        if (Test-Path $profilePath) {
-            . $profilePath
+        if (Test-Path $PROFILE) {
+            . $PROFILE
             Write-Status "Profile reloaded - theme should now be active!" -Type Success
         }
     }
