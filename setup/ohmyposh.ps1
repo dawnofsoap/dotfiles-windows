@@ -174,13 +174,28 @@ function Get-ThemeSelection {
 }
 
 function Install-OhMyPosh {
+    param([string]$ThemeName)
+    
     Write-Status "Checking OhMyPosh installation..."
     
     $ohMyPosh = Get-Command oh-my-posh -ErrorAction SilentlyContinue
+    $needsInstall = -not $ohMyPosh -or $Force
     
-    if ($ohMyPosh -and -not $Force) {
+    # Also check if themes exist
+    $themePath = $null
+    if ($env:POSH_THEMES_PATH) {
+        $themePath = Join-Path $env:POSH_THEMES_PATH "$ThemeName.omp.json"
+    }
+    $themeMissing = -not $themePath -or -not (Test-Path $themePath)
+    
+    if ($ohMyPosh -and -not $needsInstall -and -not $themeMissing) {
         Write-Status "OhMyPosh already installed at: $($ohMyPosh.Source)" -Type Success
+        Write-Status "Theme file found: $themePath" -Type Success
         return
+    }
+    
+    if ($ohMyPosh -and $themeMissing) {
+        Write-Status "OhMyPosh installed but theme '$ThemeName' not found. Reinstalling..." -Type Warning
     }
     
     Write-Status "Installing OhMyPosh via winget..."
@@ -191,14 +206,44 @@ function Install-OhMyPosh {
         Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://ohmyposh.dev/install.ps1'))
     }
     else {
-        winget install JanDeDobbeleer.OhMyPosh -s winget --accept-package-agreements --accept-source-agreements
+        # Use --force to ensure themes are installed
+        winget install JanDeDobbeleer.OhMyPosh -s winget --accept-package-agreements --accept-source-agreements --force
     }
     
+    # Refresh environment variables
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + 
                 [System.Environment]::GetEnvironmentVariable("Path", "User")
     
+    # Refresh POSH_THEMES_PATH from registry
+    $userEnv = [System.Environment]::GetEnvironmentVariable("POSH_THEMES_PATH", "User")
+    $machineEnv = [System.Environment]::GetEnvironmentVariable("POSH_THEMES_PATH", "Machine")
+    $env:POSH_THEMES_PATH = if ($userEnv) { $userEnv } elseif ($machineEnv) { $machineEnv } else { $env:POSH_THEMES_PATH }
+    
+    # Verify installation
     if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
         Write-Status "OhMyPosh installed successfully!" -Type Success
+        
+        # Verify theme exists now
+        if ($env:POSH_THEMES_PATH) {
+            $themePath = Join-Path $env:POSH_THEMES_PATH "$ThemeName.omp.json"
+            if (Test-Path $themePath) {
+                Write-Status "Theme file verified: $themePath" -Type Success
+            }
+            else {
+                Write-Status "Theme file still not found at: $themePath" -Type Warning
+                Write-Status "Available themes in $env:POSH_THEMES_PATH :" -Type Info
+                $availableThemes = Get-ChildItem $env:POSH_THEMES_PATH -Filter "*.omp.json" -ErrorAction SilentlyContinue | Select-Object -First 5
+                if ($availableThemes) {
+                    $availableThemes | ForEach-Object { Write-Host "  - $($_.BaseName)" }
+                }
+                else {
+                    Write-Status "No themes found! Try restarting terminal and running again." -Type Error
+                }
+            }
+        }
+        else {
+            Write-Status "POSH_THEMES_PATH not set. Restart terminal and run again." -Type Warning
+        }
     }
     else {
         Write-Status "OhMyPosh installation may require a terminal restart" -Type Warning
@@ -478,7 +523,7 @@ try {
         $selectedTheme = Get-ThemeSelection
     }
     
-    Install-OhMyPosh
+    Install-OhMyPosh -ThemeName $selectedTheme
     Install-NerdFont
     Update-PowerShellProfile -ThemeName $selectedTheme
     Update-WindowsTerminalSettings
